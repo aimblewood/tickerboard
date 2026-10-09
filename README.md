@@ -37,9 +37,19 @@ Each result carries `requested`, `symbol`, `name`, `currency`, `exchange`, `type
 
 Inside Claude, the watchlist (`data/users/<id>/board`) and practice account (`data/users/<id>/practice`) are saved to each viewer's private artifact store. Opened anywhere else, the page falls back to the browser's local storage.
 
-## Running it outside Claude
+## Hosted copy
 
-Opening `index.html` directly works, but shows no prices: the n8n connector is only available inside Claude. This repo is the source and a backup, not a hosted copy.
+The page is published with GitHub Pages at **https://aimblewood.github.io/tickerboard/**.
+
+Outside Claude there is no connector, so the hosted copy calls the workflow's webhook directly:
+
+```
+GET https://covase.app.n8n.cloud/webhook/stock-board-feed-7f3c9a2e?mode=quotes&symbols=TSCO.L&range=1d
+```
+
+- The webhook only accepts browser calls from `https://aimblewood.github.io`. Scripts and tools like curl can still call it, and every call is one n8n execution.
+- Opening `index.html` straight from disk shows no prices, because the browser blocks the call from a local file.
+- The hosted copy saves the board and practice account in that browser's local storage, separate from the Claude version.
 
 ## Data notes
 

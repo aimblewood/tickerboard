@@ -465,6 +465,9 @@ a{color:inherit}
 var WF_ID = 'SaPlF05BTtwcXfhw';
 var WF_NAME = 'Tickerboard · Price Feed';
 var SERVER = 'n8n';
+/* Outside Claude (e.g. GitHub Pages) there is no connector, so the page calls the feed's webhook directly. */
+var WEBHOOK = 'https://covase.app.n8n.cloud/webhook/stock-board-feed-7f3c9a2e';
+var STANDALONE = !(window.claude && typeof window.claude.use === 'function');
 var BOARD_KEY = 'tickerboard.board.v1';
 var PREF_KEY = 'tickerboard.prefs.v1';
 var TAPE = [
@@ -794,8 +797,24 @@ function callTool(tool, input){
     return asObj(r && r.payload !== undefined ? r.payload : r);
   }, function(e){ throw normErr(e); });
 }
+async function fetchDirect(query){
+  var qs = Object.keys(query).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(query[k]); }).join('&');
+  var ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  var tm = ctl ? setTimeout(function(){ ctl.abort(); }, 30000) : null;
+  try {
+    var res = await fetch(WEBHOOK + '?' + qs, {cache:'no-store', signal: ctl ? ctl.signal : undefined});
+    if (!res.ok) throw {code:'feed_http', message:'The price feed answered with status ' + res.status + '.'};
+    var out = await res.json();
+    if (!out || typeof out !== 'object') throw {code:'feed_failed'};
+    return out;
+  } catch (e) {
+    if (e && e.code) throw e;
+    throw {code: e && e.name === 'AbortError' ? 'feed_timeout' : 'net_error'};
+  } finally { if (tm) clearTimeout(tm); }
+}
 async function runFeed(query){
   if (!mcp) throw {code:'no_mcp'};
+  if (mcp.direct) return fetchDirect(query);
   var input = {workflowId: WF_ID, executionMode: 'production', triggerNodeName: 'Price Request', inputs: {webhookData: {method: 'GET', query: query}}};
   var started;
   try { started = await callTool('execute_workflow', input); }
@@ -1058,6 +1077,10 @@ function issueText(e){
       return {t:'n8n didn’t answer', b:'The connector was unreachable just now. Try again in a moment.', a:'refresh'};
     case 'no_data':
       return {t:'No history for this range', b:e.message || ''};
+    case 'net_error':
+      return {t:'Couldn’t reach the price feed', b:'Check your connection, and that “' + WF_NAME + '” is published in n8n.', a:'refresh'};
+    case 'feed_http':
+      return {t:'The price feed returned an error', b:(e.message || '') + ' Check “' + WF_NAME + '” in n8n.', a:'refresh'};
     default:
       return {t:'Prices couldn’t load', b:(e && e.message) || 'Something went wrong reaching n8n.', a:'refresh'};
   }
@@ -2073,6 +2096,7 @@ async function boot(){
     useLocal();
   })();
   mcp = await use('mcp');
+  if (!mcp && STANDALONE) mcp = {direct:true};
   mcpResolved = true;
   applyModeChrome();
   if (!mcp) {

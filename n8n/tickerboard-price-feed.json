@@ -6,13 +6,19 @@
       "name": "Price Request",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "parameters": {
         "httpMethod": "GET",
         "path": "stock-board-feed-7f3c9a2e",
         "authentication": "none",
         "responseMode": "lastNode",
-        "responseData": "firstEntryJson"
+        "responseData": "firstEntryJson",
+        "options": {
+          "allowedOrigins": "https://aimblewood.github.io"
+        }
       },
       "webhookId": "79b71b38-28af-426c-b6a7-67562cc250cc"
     },
@@ -21,7 +27,10 @@
       "name": "Plan Requests",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [520, 300],
+      "position": [
+        520,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -33,7 +42,10 @@
       "name": "Fetch Yahoo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
-      "position": [800, 300],
+      "position": [
+        800,
+        300
+      ],
       "parameters": {
         "method": "GET",
         "url": "={{ $json.url }}",
@@ -42,14 +54,30 @@
         "specifyHeaders": "keypair",
         "headerParameters": {
           "parameters": [
-            { "name": "User-Agent", "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" },
-            { "name": "Accept", "value": "application/json" }
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
           ]
         },
         "options": {
-          "batching": { "batch": { "batchSize": 8, "batchInterval": 150 } },
+          "batching": {
+            "batch": {
+              "batchSize": 8,
+              "batchInterval": 150
+            }
+          },
           "timeout": 10000,
-          "response": { "response": { "neverError": true, "responseFormat": "json" } }
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         }
       },
       "onError": "continueRegularOutput"
@@ -59,7 +87,10 @@
       "name": "Build Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1080, 300],
+      "position": [
+        1080,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -71,7 +102,10 @@
       "name": "Sticky Note 35ee6ae2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [100, 300],
+      "position": [
+        100,
+        300
+      ],
       "parameters": {
         "content": "## Tickerboard price feed\nCalled by the Tickerboard dashboard through the n8n connector. Query: mode=quotes|chart|search, symbols=comma list (max 40), range=1d|5d|1mo|6mo|ytd|1y|5y|max, or from/to (unix seconds, daily closes), q=search text. Data from Yahoo Finance public chart API (unofficial, no key). Exchange delays apply.",
         "color": 5
@@ -79,10 +113,43 @@
     }
   ],
   "connections": {
-    "Price Request": { "main": [[{ "node": "Plan Requests", "type": "main", "index": 0 }]] },
-    "Plan Requests": { "main": [[{ "node": "Fetch Yahoo", "type": "main", "index": 0 }]] },
-    "Fetch Yahoo": { "main": [[{ "node": "Build Result", "type": "main", "index": 0 }]] }
+    "Price Request": {
+      "main": [
+        [
+          {
+            "node": "Plan Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Requests": {
+      "main": [
+        [
+          {
+            "node": "Fetch Yahoo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Yahoo": {
+      "main": [
+        [
+          {
+            "node": "Build Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1", "availableInMCP": true },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
   "pinData": {}
 }
