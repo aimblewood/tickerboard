@@ -1,0 +1,88 @@
+{
+  "name": "Tickerboard · Price Feed",
+  "nodes": [
+    {
+      "id": "3f0478d1-e4aa-4590-b015-6821c8aff18a",
+      "name": "Price Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "stock-board-feed-7f3c9a2e",
+        "authentication": "none",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson"
+      },
+      "webhookId": "79b71b38-28af-426c-b6a7-67562cc250cc"
+    },
+    {
+      "id": "ec127de1-ad41-4e27-837c-b1b6405c7f16",
+      "name": "Plan Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const src = $input.first().json || {};\nconst body = (src.body && typeof src.body === 'object') ? src.body : {};\nconst q = Object.assign({}, src.query || {}, body);\nconst mode = String(q.mode || 'quotes').toLowerCase();\nif (mode === 'search') {\n  const term = String(q.q || '').trim().slice(0, 60);\n  if (!term) return [{ json: { kind: 'none', mode: mode } }];\n  return [{ json: { kind: 'search', mode: mode, url: 'https://query1.finance.yahoo.com/v1/finance/search?q=' + encodeURIComponent(term) + '&quotesCount=10&newsCount=0&listsCount=0&enableFuzzyQuery=true' } }];\n}\nconst RANGES = { '1d': '5m', '5d': '15m', '1mo': '1d', '3mo': '1d', '6mo': '1d', 'ytd': '1d', '1y': '1d', '2y': '1wk', '5y': '1wk', 'max': '1mo' };\nconst from = parseInt(q.from, 10);\nconst to = parseInt(q.to, 10);\nconst custom = from > 0 && to > from && (to - from) <= 400 * 86400;\nconst range = custom ? 'custom' : (RANGES[q.range] ? q.range : '1d');\nconst interval = custom ? '1d' : RANGES[range];\nconst span = custom ? ('period1=' + from + '&period2=' + to) : ('range=' + range);\nconst symbols = String(q.symbols || '').split(',').map(s => s.trim().toUpperCase()).filter(s => /^[A-Z0-9^.=-]{1,20}$/.test(s));\nconst unique = [...new Set(symbols)].slice(0, 40);\nif (!unique.length) return [{ json: { kind: 'none', mode: mode } }];\nreturn unique.map(s => ({ json: { kind: 'chart', mode: mode, symbol: s, range: range, interval: interval, url: 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(s) + '?' + span + '&interval=' + interval + '&includePrePost=false' } }));"
+      }
+    },
+    {
+      "id": "a801a417-8dd0-4f43-8622-12a14c66e425",
+      "name": "Fetch Yahoo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [800, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            { "name": "User-Agent", "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "options": {
+          "batching": { "batch": { "batchSize": 8, "batchInterval": 150 } },
+          "timeout": 10000,
+          "response": { "response": { "neverError": true, "responseFormat": "json" } }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "ec8ae4e8-b05b-4e5e-bc39-f31bf3f190bb",
+      "name": "Build Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const plans = $('Plan Requests').all();\nconst responses = $input.all();\nconst round = (v, d) => (typeof v === 'number' && isFinite(v)) ? Math.round(v * Math.pow(10, d)) / Math.pow(10, d) : null;\nconst first = plans[0] ? plans[0].json : { mode: 'quotes', kind: 'none' };\nconst out = { ok: true, mode: first.mode, source: 'Yahoo Finance chart API (unofficial)', generatedAt: new Date().toISOString() };\nif (first.kind === 'none') { out.results = []; out.matches = []; return [{ json: out }]; }\nif (first.kind === 'search') {\n  const sb = responses[0] ? responses[0].json : {};\n  const quotes = Array.isArray(sb.quotes) ? sb.quotes : [];\n  out.matches = quotes.filter(x => x && x.symbol && x.isYahooFinance !== false).map(x => ({ symbol: x.symbol, name: x.longname || x.shortname || x.symbol, exchange: x.exchDisp || x.exchange || '', type: x.typeDisp || x.quoteType || '' }));\n  if (!quotes.length && sb.error) { out.ok = false; out.error = String(sb.error.message || sb.error); }\n  return [{ json: out }];\n}\nout.range = first.range;\nout.interval = first.interval;\nout.results = plans.map((p, i) => {\n  const b = responses[i] ? responses[i].json : null;\n  const sym = p.json.symbol;\n  const r = b && b.chart && Array.isArray(b.chart.result) ? b.chart.result[0] : null;\n  if (!r || !r.meta) {\n    let e = 'No data returned';\n    if (b && b.chart && b.chart.error) e = b.chart.error.description || b.chart.error.code || e;\n    else if (b && b.error) e = b.error.message || String(b.error);\n    return { requested: sym, symbol: sym, error: String(e) };\n  }\n  const m = r.meta;\n  const ts = Array.isArray(r.timestamp) ? r.timestamp : [];\n  const qd = r.indicators && r.indicators.quote && r.indicators.quote[0] ? r.indicators.quote[0] : {};\n  const closes = Array.isArray(qd.close) ? qd.close : [];\n  const points = [];\n  for (let k = 0; k < ts.length; k++) { const c = closes[k]; if (typeof c === 'number' && isFinite(c)) points.push([ts[k], round(c, 6)]); }\n  const reg = m.currentTradingPeriod && m.currentTradingPeriod.regular ? m.currentTradingPeriod.regular : null;\n  return {\n    requested: sym,\n    symbol: m.symbol || sym,\n    name: m.longName || m.shortName || m.symbol || sym,\n    currency: m.currency || null,\n    exchange: m.fullExchangeName || m.exchangeName || '',\n    type: m.instrumentType || '',\n    price: round(m.regularMarketPrice, 6),\n    previousClose: round(m.previousClose, 6),\n    chartPreviousClose: round(m.chartPreviousClose, 6),\n    dayHigh: round(m.regularMarketDayHigh, 6),\n    dayLow: round(m.regularMarketDayLow, 6),\n    volume: typeof m.regularMarketVolume === 'number' ? m.regularMarketVolume : null,\n    high52: round(m.fiftyTwoWeekHigh, 6),\n    low52: round(m.fiftyTwoWeekLow, 6),\n    marketTime: m.regularMarketTime || null,\n    timezone: m.exchangeTimezoneName || null,\n    session: reg ? { start: reg.start, end: reg.end } : null,\n    points: points\n  };\n});\nreturn [{ json: out }];"
+      }
+    },
+    {
+      "id": "dea0f797-40c5-4178-991e-3003972a56e2",
+      "name": "Sticky Note 35ee6ae2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 300],
+      "parameters": {
+        "content": "## Tickerboard price feed\nCalled by the Tickerboard dashboard through the n8n connector. Query: mode=quotes|chart|search, symbols=comma list (max 40), range=1d|5d|1mo|6mo|ytd|1y|5y|max, or from/to (unix seconds, daily closes), q=search text. Data from Yahoo Finance public chart API (unofficial, no key). Exchange delays apply.",
+        "color": 5
+      }
+    }
+  ],
+  "connections": {
+    "Price Request": { "main": [[{ "node": "Plan Requests", "type": "main", "index": 0 }]] },
+    "Plan Requests": { "main": [[{ "node": "Fetch Yahoo", "type": "main", "index": 0 }]] },
+    "Fetch Yahoo": { "main": [[{ "node": "Build Result", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "availableInMCP": true },
+  "pinData": {}
+}
